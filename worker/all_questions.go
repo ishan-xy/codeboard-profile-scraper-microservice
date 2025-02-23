@@ -11,7 +11,7 @@ import (
 	go_utils "github.com/ItsMeSamey/go_utils"
 )
 
-func FetchAllQuestions() ([]db.Question , error) {
+func FetchAllQuestions() (map[string]db.Question, error) {
 	variables := map[string]interface{}{
 		"categorySlug": "all-code-essentials",
 		"skip":         0,
@@ -21,8 +21,9 @@ func FetchAllQuestions() ([]db.Question , error) {
 	s, err := SendQuery(ALL_QUESTION_LIST_QUERY, variables)
 	if err != nil {
 		log.Println(go_utils.WithStack(err))
+		return nil, err
 	}
-	sJson, _:= json.Marshal(s)
+	sJson, _ := json.Marshal(s)
 	var response db.QuestionListResponse
 	if err := json.Unmarshal([]byte(sJson), &response); err != nil {
 		log.Println("Error parsing JSON:", go_utils.WithStack(err))
@@ -30,17 +31,24 @@ func FetchAllQuestions() ([]db.Question , error) {
 	}
 	questions := response.Data.ProblemsetQuestionList.Questions
 
-	// store in redis cache
-	questionsJson, _ := json.Marshal(questions)
+	// Convert slice to map with TitleSlug as the key
+	questionsMap := make(map[string]db.Question)
+	for _, q := range questions {
+		questionsMap[q.TitleSlug] = q
+	}
+
+	// Store the map in Redis
+	questionsJson, _ := json.Marshal(questionsMap)
 	err = redisClient.Set(ctx, "all_questions", questionsJson, 24*time.Hour).Err()
 	if err != nil {
 		log.Println(go_utils.WithStack(err))
+		return nil, err
 	}	
-	log.Println("Fetched", len(questions), "questions")
-	return questions, nil
+	log.Println("Fetched", len(questionsMap), "questions")
+	return questionsMap, nil
 }
 
-func GetCachedQuestions() ([]db.Question, error) {
+func GetCachedQuestions() (map[string]db.Question, error) {
 	// Check cache first
 	val, err := redisClient.Get(ctx, "all_questions").Result()
 	if err == redis.Nil {
@@ -50,13 +58,13 @@ func GetCachedQuestions() ([]db.Question, error) {
 		return FetchAllQuestions() // Fallback to API
 	}
 
-	// Cache hit: deserialize data
-	var questions []db.Question
-	err = json.Unmarshal([]byte(val), &questions)
+	// Cache hit: deserialize into map
+	var questionsMap map[string]db.Question
+	err = json.Unmarshal([]byte(val), &questionsMap)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding cached data: %v", go_utils.WithStack(err))
 	}
 
-	log.Println("Retrieved", len(questions), "questions from cache")
-	return questions, nil
+	log.Println("Retrieved", len(questionsMap), "questions from cache")
+	return questionsMap, nil
 }

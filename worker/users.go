@@ -7,7 +7,6 @@ import (
 	"scraper/db"
 	"encoding/json"
 	
-	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/bson"
 	go_utils "github.com/ItsMeSamey/go_utils"
@@ -48,7 +47,7 @@ func GetCachedUsernames() []string {
 	return usernames
 }
 
-func addUsernameToCache(username string) {
+func AddUsernameToCache(username string) {
 	usernames := GetCachedUsernames()
 	usernames = append(usernames, username)
 	SetUsernamesInCache(usernames)
@@ -61,11 +60,4 @@ func SetUsernamesInCache(usernames []string) error{
 		return go_utils.WithStack(err)
 	}
 	return nil
-}
-
-func SubscribeNewUser(nc *nats.Conn) {
-	nc.Subscribe("user.created", func(m *nats.Msg){
-		log.Println(string(m.Data))	
-		addUsernameToCache(string(m.Data))
-	})
 }
